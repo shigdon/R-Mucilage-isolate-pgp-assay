@@ -1,0 +1,108 @@
+---
+title: "PGP Assay Analysis"
+author: "Shawn Higdon"
+date: "11/8/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+```{r, message=FALSE}
+library(treeio)
+library(ggtree)
+library(ggnewscale)
+library(ComplexHeatmap)
+library(tidyverse)
+library(dendextend)
+library(ape)
+library(circlize)
+library(viridis)
+library(randomcoloR)
+library(RColorBrewer)
+library(cowplot)
+```
+
+# Read in Genome Metadata Files
+
+> ABB to BCW Genome ID Map
+
+> Metabat Bin Count per Isolate
+
+> Sourmash LCA Classification Data
+
+> Genome Assembly Statistics: Quast output and coverage estimation
+
+> List of Isolates from Potato Inoculation Assay
+
+```{r}
+# ABB to BCW ID MAP
+abb_bcw_labels <- read.csv("./genome_metadata/abb_genome_bcw_labels.csv", header = T)
+
+# METABAT BIN INFO
+metabat_bins <- read_csv("./genome_metadata/metabat_bin_count.csv", col_names = c("ID", "n_bins"))
+
+# Sourmash LCA Genome Classification Data
+smash_lca_whole_genomes <- read.csv("./sourmash_data/sm-lca-whole_genomes-all-k31.csv", header = T)
+
+# Read in quast Summary for all isolate assemblies done with MEgahit
+asm_stats <- read_tsv("genome_metadata/assembly_stats/all_quast_reports.tsv") # includes eukaryotic isolates
+
+# Read in assembly coverage stat table
+asm_cov <- read.table("genome_metadata/assembly_stats/avg_coverage.tsv", header = T)
+
+# Add AVG_COV to asm_stats
+asm_stats <- inner_join(asm_stats, asm_cov, by = "Assembly")
+
+# Read in list of potato screen isolates
+pot_isolates <- read_csv("genome_metadata/potato_isolate_list.csv")
+
+```
+
+## Add BCW labels to all metadata files
+```{r}
+# Add BCW label to metabat bin DF
+metabat_bins$bcw_id <- abb_bcw_labels$BCW_ID[match(metabat_bins$ID, abb_bcw_labels$ABB_ID)]
+
+# Add BCW label to sourmash lca data
+smash_lca_whole_genomes$bcw_id <- abb_bcw_labels$BCW_ID[match(smash_lca_whole_genomes$ID, abb_bcw_labels$ABB_ID)]
+
+```
+
+## Generate list of bacterial isolates with single genome bin
+```{r}
+# create new dataframe
+single_isolates <- metabat_bins %>% select( "bcw_id", "ID", "n_bins")
+
+# add genus data
+single_isolates$genus <- smash_lca_whole_genomes$genus[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
+
+# add phylum data
+single_isolates$phylum <- smash_lca_whole_genomes$phylum[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
+
+# empty cells for genus are 'unassigned'
+single_isolates$genus <- sub("^$", "unassigned", single_isolates$genus)
+
+# empty cells for Phylum are 'unassigned'
+single_isolates$phylum <- sub("^$", "unassigned", single_isolates$phylum)
+
+# remove eukaryotes
+single_isolates <- single_isolates %>% filter(genus != "Meyerozyma" &
+                                                genus != "Rhodotorula")
+# remove isolates that were pulled apart
+single_isolates <- single_isolates %>% filter(bcw_id != "BCW_201831.1" &
+                                                bcw_id != "BCW_201831.2" &
+                                                bcw_id != "BCW_200557.1" &
+                                                bcw_id != "BCW_200557.2")
+# Keep only isolates with 1 genomic bin
+single_isolates <- single_isolates %>% filter(n_bins == 1)
+
+# add abb_ids
+single_isolates$abb_id <- abb_bcw_labels$ABB_ID[match(single_isolates$bcw_id, abb_bcw_labels$BCW_ID)]
+
+# change _ to - for BCW_ID
+single_isolates$bcw_id <- sub("_", "-", single_isolates$bcw_id)
+
+```
