@@ -25,7 +25,7 @@ library(RColorBrewer)
 library(cowplot)
 ```
 
-# Read in Genome Metadata Files
+# Read in Genome Metadata
 
 > ABB to BCW Genome ID Map
 
@@ -34,8 +34,6 @@ library(cowplot)
 > Sourmash LCA Classification Data
 
 > Genome Assembly Statistics: Quast output and coverage estimation
-
-> List of Isolates from Potato Inoculation Assay
 
 ```{r}
 # ABB to BCW ID MAP
@@ -56,9 +54,6 @@ asm_cov <- read.table("genome_metadata/assembly_stats/avg_coverage.tsv", header 
 # Add AVG_COV to asm_stats
 asm_stats <- inner_join(asm_stats, asm_cov, by = "Assembly")
 
-# Read in list of potato screen isolates
-pot_isolates <- read_csv("genome_metadata/potato_isolate_list.csv")
-
 ```
 
 ## Add BCW labels to all metadata files
@@ -69,12 +64,20 @@ metabat_bins$bcw_id <- abb_bcw_labels$BCW_ID[match(metabat_bins$ID, abb_bcw_labe
 # Add BCW label to sourmash lca data
 smash_lca_whole_genomes$bcw_id <- abb_bcw_labels$BCW_ID[match(smash_lca_whole_genomes$ID, abb_bcw_labels$ABB_ID)]
 
+## change '_' to '-' for bcw_id
+smash_lca_whole_genomes$bcw_id <- sub("_", "-", smash_lca_whole_genomes$bcw_id)
+
+## empty cells are 'unassigned'
+smash_lca_whole_genomes$genus <- sub("^$", "unassigned", smash_lca_whole_genomes$genus)
+
 ```
 
 ## Generate list of bacterial isolates with single genome bin
 ```{r}
 # create new dataframe
 single_isolates <- metabat_bins %>% select( "bcw_id", "ID", "n_bins")
+## modify to match other records
+single_isolates$bcw_id <- sub("_", "-", single_isolates$bcw_id)
 
 # add genus data
 single_isolates$genus <- smash_lca_whole_genomes$genus[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
@@ -102,7 +105,1866 @@ single_isolates <- single_isolates %>% filter(n_bins == 1)
 # add abb_ids
 single_isolates$abb_id <- abb_bcw_labels$ABB_ID[match(single_isolates$bcw_id, abb_bcw_labels$BCW_ID)]
 
-# change _ to - for BCW_ID
+# change '_' to '-' for bcw_id
 single_isolates$bcw_id <- sub("_", "-", single_isolates$bcw_id)
 
+```
+
+## PGP Analysis Data
+
+### Read in the Data for PGP Biochemical assays
+
+```{r, message=FALSE}
+
+# Read in the PGP Assay raw data files for each isolate
+pgp_data_list <- list.files(path = "./PGP_Data", pattern = 'PGP_*', recursive = T, full.names = T)
+pgp_data_list
+
+# Create a list of bcw nifscan search output tables
+pgp_data_tbl_list <- lapply(pgp_data_list, read_csv)
+
+# create object for each PGP Assay
+pgp_15N <- pgp_data_tbl_list[[1]]
+pgp_accd <- pgp_data_tbl_list[[2]]
+pgp_auxin <- pgp_data_tbl_list[[3]]
+pgp_po4 <- pgp_data_tbl_list[[4]]
+pgp_sidero <- pgp_data_tbl_list[[5]]
+
+## change '_' to '-' for bcw_id of pgp_15N
+pgp_15N$BCW_ID <- sub("_", "-", pgp_15N$BCW_ID)
+```
+
+
+## Compute PGP Assay metrics
+
+### ACC Deaminase Growth Assay
+
+> Isolates cultured on medium containing 1-amino-1-cyclopropane carboxylic acid as the only source of available nitrogen
+
+```{r}
+# ACCD Assay
+## Compute average for Day 0 OD600 replicates
+pgp_accd$OD600_D0_avg <- rowMeans(pgp_accd[,3:5], na.rm = TRUE)
+## Compute average for Day 4 OD600 replicates
+pgp_accd$OD600_D4_avg <- rowMeans(pgp_accd[,6:8], na.rm = TRUE)
+
+## Compute Relative growth rate for each isolate
+pgp_accd$ACCD_RGR <- pgp_accd$OD600_D4_avg/pgp_accd$OD600_D0_avg
+
+## change number of significant digits for numeric values to 3
+pgp_accd %>% mutate_if(is.numeric, round, digits = 3)
+
+## change '_' to '-' for bcw_id
+pgp_accd$BCW_ID <- sub("_", "-", pgp_accd$BCW_ID)
+
+## inspect object
+str(pgp_accd)
+```
+
+### Auxin Biosynthesis Assay
+
+```{r}
+# IAA Assay
+## Compute average for OD535 replicates
+pgp_auxin$OD535_avg <- rowMeans(pgp_auxin[,3:5], na.rm = TRUE)
+
+## Compute average for auxin concentration replicate values
+pgp_auxin$IAA_mg_ml_avg <- rowMeans(pgp_auxin[,6:8], na.rm = TRUE)
+
+## change number of significant digits for numeric values to 3
+pgp_auxin %>% mutate_if(is.numeric, round, digits = 3)
+
+## change '_' to '-' for bcw_id
+pgp_auxin$BCW_ID <- sub("_", "-", pgp_auxin$BCW_ID)
+
+## Inspect object
+str(pgp_auxin)
+```
+
+## Phosphate Solubilization Assay
+
+```{r}
+# PO4 Assay
+## Compute average for OD535 replicates
+pgp_po4$OD535_avg <- rowMeans(pgp_po4[,3:5], na.rm = TRUE)
+
+## Compute average for auxin concentration replicate values
+pgp_po4$PO4_mg_L_avg <- rowMeans(pgp_po4[,6:8], na.rm = TRUE)
+
+## Multiply diluted concentrations by assay dilution factor of 100
+pgp_po4$PO4_mg_L_avg <- pgp_po4$PO4_mg_L_avg*100
+
+## change number of significant digits for numeric values to 3
+pgp_po4 %>% mutate_if(is.numeric, round, digits = 3)
+
+## change '_' to '-' for bcw_id
+pgp_po4$BCW_ID <- sub("_", "-", pgp_po4$BCW_ID)
+
+## Inspect object
+str(pgp_po4)
+```
+
+## Siderophore Production Assay
+
+```{r}
+# Siderophore Assay
+## Compute average for OD535 replicates
+pgp_sidero$OD630_avg <- rowMeans(pgp_sidero[,3:5], na.rm = TRUE)
+
+## Compute average for Siderophore units (%) using AR_AS replicate values
+## % Siderophore units = Absorbance of Sample (AS) - Absorbance of Reference (AR) / AR
+pgp_sidero$Sidero_units_avg <- rowMeans(pgp_sidero[,6:8], na.rm = TRUE)
+
+## change number of significant digits for numeric values to 3
+pgp_sidero %>% mutate_if(is.numeric, round, digits = 3)
+
+## change '_' to '-' for bcw_id
+pgp_sidero$BCW_ID <- sub("_", "-", pgp_sidero$BCW_ID)
+
+## Inspect Object
+str(pgp_sidero)
+```
+
+### Sourmash Compare Data
+```{r}
+# read in sourmash k31 compare matrix for single isolate genomes
+sm_k31_cmp <- read.csv("sourmash_data/pure_isolate_492_cmp/pure_isolate_k31_cmp_492.csv", header=T, check.names = F)
+
+# set rownames to colnames
+rownames(sm_k31_cmp) <- colnames(sm_k31_cmp)
+#head(rownames(sm_k31_cmp))
+
+# add bcw ids to sm_k31_cmp data frame
+
+## change '_' to '-' for BCW ids
+abb_bcw_labels$BCW_ID <- sub("_", "-", abb_bcw_labels$BCW_ID)
+
+## match BCW ids
+sm_k31_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(sm_k31_cmp), abb_bcw_labels$BCW_ID)]
+
+# add genus info to sm_k31
+sm_k31_cmp$genus <- single_isolates$genus[match(sm_k31_cmp$bcw_id, single_isolates$bcw_id)]
+
+# Create tx_name Variable with Hybrid genus + Isolate Name: GENUS sp. BCWXXXX
+sm_k31_cmp$tx_name <- paste(sm_k31_cmp$genus, sprintf("sp. %s", sm_k31_cmp$bcw_id))
+
+# create matrix
+sm_k31_cmp_mat <- as.matrix(sm_k31_cmp[,1:492])
+
+rownames(sm_k31_cmp_mat) <- sm_k31_cmp$tx_name
+colnames(sm_k31_cmp_mat) <- sm_k31_cmp$tx_name
+
+```
+
+## Combine PGP Assay Results
+
+> Make a data frame with results from:
+
+1. 15N Assay
+
+2. ACCD Growth Assay
+
+3. Auxin Biosynthesis Assay
+
+4. Phosphate Solubilization Assay
+
+5. Siderophore Production Assay
+
+### PGP Master Data Frame
+```{r}
+# Make pgp master dataframe
+pgp_master <- data.frame(TX_ID=sm_k31_cmp$tx_name)
+
+# add BCW ids
+pgp_master$BCW_ID <- sm_k31_cmp$bcw_id
+
+# add ABB ids
+pgp_master$ABB_ID <- abb_bcw_labels$ABB_ID[match(pgp_master$BCW_ID, abb_bcw_labels$BCW_ID)]
+
+# add N15 ratio values for each isolate
+pgp_master$`BNF` <- pgp_15N$ratio[match(pgp_master$BCW_ID, pgp_15N$BCW_ID)]
+
+# add ACCD assay results
+pgp_master$`ACC` <- pgp_accd$ACCD_RGR[match(pgp_master$BCW_ID, pgp_accd$BCW_ID)]
+
+# add Auxin assay results
+pgp_master$`IAA` <- pgp_auxin$IAA_mg_ml_avg[match(pgp_master$BCW_ID, pgp_auxin$BCW_ID)]
+
+# add Phosphate solubility assay results
+pgp_master$`PO4` <- pgp_po4$PO4_mg_L_avg[match(pgp_master$BCW_ID, pgp_po4$BCW_ID)]
+
+# add siderophore assay results
+pgp_master$`SID` <- pgp_sidero$Sidero_units_avg[match(pgp_master$BCW_ID, pgp_sidero$BCW_ID)]
+
+# add Genus classification for each isolate
+pgp_master$Genus <- smash_lca_whole_genomes$genus[match(pgp_master$BCW_ID, smash_lca_whole_genomes$bcw_id)]
+
+pgp_master$Genus <- as.factor(pgp_master$Genus) # coerce to factor
+
+## assign a unique color to each genus
+set.seed(8888)
+pgp_genus_colors <- data.frame(Genus = unique(pgp_master$Genus), Color =  distinctColorPalette(length(unique(pgp_master$Genus))))
+
+# add phylum classification for each isolate
+pgp_master$Phylum <- single_isolates$phylum[match(pgp_master$BCW_ID, single_isolates$bcw_id)]
+
+## assign a unique color to each phylum
+set.seed(1234)
+pgp_phylum_colors <- data.frame(Phylum = unique(pgp_master$Phylum), Color =  distinctColorPalette(length(unique(pgp_master$Phylum))))
+
+### match Genus
+pgp_master$Genus_Color <- pgp_genus_colors$Color[match(pgp_master$Genus, pgp_genus_colors$Genus)]
+
+### match Phylum
+pgp_master$Phylum_Color <- pgp_phylum_colors$Color[match(pgp_master$Phylum, pgp_phylum_colors$Phylum)]
+
+## change number of significant digits for numeric values to 3
+pgp_master <- pgp_master %>% mutate_if(is.numeric, round, digits = 3)
+
+# Remove incomplete cases (Isolates with NA values for PGP assays)
+#pgp_master <- drop_na(pgp_master)
+
+# Create list of isolates with complete pgp cases
+single_isolates_complete_cases <- data.frame(BCW_ID = pgp_master$BCW_ID)
+#write_csv(single_isolates_complete_cases, "./R_output_files/single_isolates_complete_cases.csv", col_names = F)
+
+# add sm_k31_cmp data to pgp_master
+pgp_master <- cbind(sm_k31_cmp_mat, pgp_master)
+
+```
+
+> 492 isolates with single bin genomes and complete cases for pgp assays.
+
+> Used list of single genome bin with complete cases to perform `sourmash compare` with subset of isolate genomes.
+
+> read in output from `sourmash compare` to R
+
+```
+sourmash compare -k 31
+```
+### All Single Isolates
+```{r}
+# Create Phylo Tree from sourmash matrix
+
+sm_k31_tree_mat <- dist2(sm_k31_cmp_mat)
+
+sm_k31_tree_fit <- hclust(sm_k31_tree_mat)
+
+sm_k31_phylo <- as.phylo(sm_k31_tree_fit)
+
+# set rownames of pgp_master to match tree tip labels
+rownames(pgp_master) <- sm_k31_phylo$tip.label
+
+head(rownames(pgp_master)) # inspect rownames
+
+colnames(pgp_master[,493:504]) # show column names
+
+levels(pgp_master$Genus) # assess levels of genera
+
+```
+
+#### PGP Phenotype Tree
+```{r, message=FALSE}
+# Make tree
+sm_k31_tree_o15 <- ggtree(sm_k31_phylo, color = "black", size = 0.3, layout = "fan", open.angle = 15)
+
+# Genus Tree
+pgp0_notip <- gheatmap(sm_k31_tree_o15, pgp_master[, "Genus", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 9.5,
+                     font.size = 4,
+                     color = "grey50") + 
+  scale_fill_manual(values=c("#E6BE53",
+                             "#CAD773",
+                             "#81D870",
+                             "#8F3EE4",
+                             "#E25F9D",
+                             "#D8E9D6",
+                             "#72A890",
+                             "#CDEC4C",
+                             "#C59D6B",
+                             "#86D6E1",
+                             "#77E94F",
+                             "#81748E",
+                             "#64E7A9",
+                             "#D3D0E3",
+                             "#767CDE",
+                             "#7DAEDE",
+                             "#E2684F",
+                             "#E1ABAA",
+                             "#7BEFDF",
+                             "#DA47D2",
+                             "#D7A7DF",
+                             "#E5DEA8",
+                             "#B4E3A7",
+                             "#CF7DDC"),
+                    name = "Genus",
+                    guide = guide_legend(
+                      direction = "vertical",
+                      ncol = 2,
+                      title.position = "top",
+                      title.theme = element_text(size = 18, hjust = 0.5),
+                      label.position = "right",
+                      label.theme = element_text(size = 14)
+                      )) + theme(legend.title = element_text(),
+                                 legend.key.size = unit(.5, "cm"))
+
+pgp_p0 <- pgp0_notip + new_scale_fill()
+
+# Add gheatmap 1 for ACCD Utilization Data
+
+pgp_p1 <- gheatmap(pgp_p0, pgp_master[, "ACC", drop = F],
+                     offset = 0.25,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 9.5,
+                     font.size = 4,
+                     color = "grey50") + 
+     scale_fill_viridis_c(option = "viridis",
+                       direction = -1,
+                       name = "ACC (Relative Growth Rate)",
+                       limits = c(0, 5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )
+                       ) +
+  theme(legend.title = element_text(), legend.position = "right")
+
+# Add gheatmap 2 for BNF assay data
+pgp_p2 <- pgp_p1 + new_scale_fill()
+
+pgp_p3 <- gheatmap(pgp_p2, pgp_master[, "BNF", drop=F],
+                 offset = 0.45,
+                 width=0.05,
+                 colnames_angle = 0,
+                 colnames_position = "top",
+                 colnames_offset_y = 9.5,
+                 font.size = 4,
+                 color = "grey50") + 
+  scale_fill_viridis_c(option = "inferno",
+                       direction = -1,
+                       name = "BNF (15N/14N)",
+                       limits = c(0, 5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )
+                       ) +
+  theme(legend.title = element_text(), legend.position = "right")
+
+# Add gheatmap 3 for IAA Biosynthesis assay
+pgp_p4 <- pgp_p3 + new_scale_fill()
+
+pgp_p5 <- gheatmap(pgp_p4, pgp_master[, "IAA", drop=F],
+                    offset = 0.65,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 9.5,
+                    font.size = 4,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "plasma",
+                       direction = 1,
+                       name = "IAA (mg/mL)",
+                       limits = c(-5, 215),
+                       breaks = c(0, 50, 100, 150, 200),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )
+                       ) +
+  theme(legend.title = element_text(), legend.position = "right")
+
+# Add gheatmap 3 for assay 3
+pgp_p6 <- pgp_p5 + new_scale_fill()
+
+pgp_all <- gheatmap(pgp_p6, pgp_master[, "PO4", drop=F],
+                    offset = 0.85,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 9.5,
+                    font.size = 4,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "magma",
+                       direction = 1,
+                       name = "PO4 (mg/L)",
+                       limits = c(0, 2250),
+                       breaks = c(0, 500, 1000, 1500, 2000),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )
+                       ) +
+  theme(legend.title = element_text(), legend.position = "right")
+
+pgp_all_rot <- print(rotate_tree(pgp_all, -82))
+
+# save plot
+ggsave("./Plots/pgp_all_rot.pdf", pgp_all_rot, width = 22, height = 14)
+
+```
+
+### NIF Groups
+
+> Read Sourmash K31 Compare Data for Each NIF Group
+
+### Dos-Santos Positive (DSP) - Group A
+```{r}
+# DSP Group
+smash_dsp_cmp <- read.csv("./sourmash_data/dsp_dos-santos-positive/pure_iso_dsp_k31_cmp.csv", header = TRUE, check.names = FALSE)
+
+# set rownames to colnames
+rownames(smash_dsp_cmp) <- colnames(smash_dsp_cmp)
+
+# add bcw ids to smash_dsp_cmp data frame
+smash_dsp_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(smash_dsp_cmp), abb_bcw_labels$BCW_ID)]
+
+# add genus info to smash_dsp_cmp
+smash_dsp_cmp$Genus <- smash_lca_whole_genomes$genus[match(smash_dsp_cmp$bcw_id, smash_lca_whole_genomes$bcw_id)]
+
+# add tx_name Variable to smash_dsp_cmp
+smash_dsp_cmp$tx_name <- paste(smash_dsp_cmp$Genus, sprintf("sp. %s", smash_dsp_cmp$bcw_id))
+
+# add BNF value
+smash_dsp_cmp$BNF <- pgp_15N$ratio[match(smash_dsp_cmp$bcw_id, pgp_15N$BCW_ID)]
+
+# add ACC value
+smash_dsp_cmp$ACC <- pgp_accd$ACCD_RGR[match(smash_dsp_cmp$bcw_id, pgp_accd$BCW_ID)]
+
+# add IAA value
+smash_dsp_cmp$IAA <- pgp_auxin$IAA_mg_ml_avg[match(smash_dsp_cmp$bcw_id, pgp_auxin$BCW_ID)]
+
+# add PO4 value
+smash_dsp_cmp$PO4 <- pgp_po4$PO4_mg_L_avg[match(smash_dsp_cmp$bcw_id, pgp_po4$BCW_ID)]
+
+# set rownames to match sample
+rownames(smash_dsp_cmp) <- smash_dsp_cmp$tx_name
+
+# create matrices for tree
+
+## sourmash compare matrix
+smash_dsp_cmp_mat <- as.matrix(smash_dsp_cmp[,1:193]) # 193 isolates
+rownames(smash_dsp_cmp_mat) <- smash_dsp_cmp$tx_name
+colnames(smash_dsp_cmp_mat) <- rownames(smash_dsp_cmp_mat)
+
+```
+
+#### DSP tree objects
+```{r}
+# Create Phylo Tree from sourmash matrix
+
+smash_dsp_k31_tree_mat <- dist2(smash_dsp_cmp_mat)
+smash_dsp_k31_tree_fit <- hclust(smash_dsp_k31_tree_mat)
+smash_dsp_k31_phylo <- as.phylo(smash_dsp_k31_tree_fit)
+
+```
+
+
+#### DSP ggtree
+```{r}
+# Make tree
+sm_dsp_k31_tree <- ggtree(smash_dsp_k31_phylo,
+                          color = "black",
+                          size = 0.4,
+                          layout = "fan",
+                          open.angle = 15)
+```
+
+### Semi Dos-Santos (SDS) - Group B
+```{r}
+# SDS Group
+smash_sds_cmp <- read.csv("./sourmash_data/sds_semi-dos-santos/pure_iso_sds_k31_cmp.csv", header = TRUE, check.names = FALSE)
+
+# set rownames to colnames
+rownames(smash_sds_cmp) <- colnames(smash_sds_cmp)
+
+# add bcw ids to smash_sds_cmp data frame
+smash_sds_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(smash_sds_cmp), abb_bcw_labels$BCW_ID)]
+
+# add genus info to smash_sds_cmp
+smash_sds_cmp$Genus <- single_isolates$genus[match(smash_sds_cmp$bcw_id, single_isolates$bcw_id)]
+
+# add tx_name Variable to smash_sds_cmp
+smash_sds_cmp$tx_name <- paste(smash_sds_cmp$Genus, sprintf("sp. %s", smash_sds_cmp$bcw_id))
+
+# add BNF value
+smash_sds_cmp$BNF <- pgp_15N$ratio[match(smash_sds_cmp$bcw_id, pgp_15N$BCW_ID)]
+
+# add ACC value
+smash_sds_cmp$ACC <- pgp_accd$ACCD_RGR[match(smash_sds_cmp$bcw_id, pgp_accd$BCW_ID)]
+
+# add IAA value
+smash_sds_cmp$IAA <- pgp_auxin$IAA_mg_ml_avg[match(smash_sds_cmp$bcw_id, pgp_auxin$BCW_ID)]
+
+# add PO4 value
+smash_sds_cmp$PO4 <- pgp_po4$PO4_mg_L_avg[match(smash_sds_cmp$bcw_id, pgp_po4$BCW_ID)]
+
+# set rownames to match sample
+rownames(smash_sds_cmp) <- smash_sds_cmp$tx_name
+
+# create matrices for tree
+
+## sourmash compare matrix
+smash_sds_cmp_mat <- as.matrix(smash_sds_cmp[,1:66]) # 66 isolates
+rownames(smash_sds_cmp_mat) <- smash_sds_cmp$tx_name
+colnames(smash_sds_cmp_mat) <- rownames(smash_sds_cmp_mat)
+
+```
+
+#### SDS tree objects
+```{r}
+# Create Phylo Tree from sourmash matrix
+
+smash_sds_k31_tree_mat <- dist2(smash_sds_cmp_mat)
+smash_sds_k31_tree_fit <- hclust(smash_sds_k31_tree_mat)
+smash_sds_k31_phylo <- as.phylo(smash_sds_k31_tree_fit)
+
+```
+
+
+#### SDS ggtree
+```{r}
+# Make tree
+sm_sds_k31_tree <- ggtree(smash_sds_k31_phylo,
+                          color = "black",
+                          size = 0.4,
+                          layout = "fan",
+                          open.angle = 15)
+```
+
+### Dos-Santos Negative (DSN) - Group C
+```{r}
+# DSN Group
+smash_dsn_cmp <- read.csv("./sourmash_data/dsn_dos-santos-negative/pure_iso_dsn_k31_cmp.csv", header = TRUE, check.names = FALSE)
+
+# set rownames to colnames
+rownames(smash_dsn_cmp) <- colnames(smash_dsn_cmp)
+
+# add bcw ids to smash_dsn_cmp data frame
+smash_dsn_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(smash_dsn_cmp), abb_bcw_labels$BCW_ID)]
+
+# add genus info to smash_dsn_cmp
+smash_dsn_cmp$Genus <- single_isolates$genus[match(smash_dsn_cmp$bcw_id, single_isolates$bcw_id)]
+
+# add tx_name Variable to smash_dsn_cmp
+smash_dsn_cmp$tx_name <- paste(smash_dsn_cmp$Genus, sprintf("sp. %s", smash_dsn_cmp$bcw_id))
+
+# add BNF value
+smash_dsn_cmp$BNF <- pgp_15N$ratio[match(smash_dsn_cmp$bcw_id, pgp_15N$BCW_ID)]
+
+# add ACC value
+smash_dsn_cmp$ACC <- pgp_accd$ACCD_RGR[match(smash_dsn_cmp$bcw_id, pgp_accd$BCW_ID)]
+
+# add IAA value
+smash_dsn_cmp$IAA <- pgp_auxin$IAA_mg_ml_avg[match(smash_dsn_cmp$bcw_id, pgp_auxin$BCW_ID)]
+
+# add PO4 value
+smash_dsn_cmp$PO4 <- pgp_po4$PO4_mg_L_avg[match(smash_dsn_cmp$bcw_id, pgp_po4$BCW_ID)]
+
+# set rownames to match sample
+rownames(smash_dsn_cmp) <- smash_dsn_cmp$tx_name
+
+# create matrices for tree
+
+## sourmash compare matrix
+smash_dsn_cmp_mat <- as.matrix(smash_dsn_cmp[,1:233]) # 233 isolates
+rownames(smash_dsn_cmp_mat) <- smash_dsn_cmp$tx_name
+colnames(smash_dsn_cmp_mat) <- rownames(smash_dsn_cmp_mat)
+
+```
+
+#### DSN tree objects
+```{r}
+# Create Phylo Tree from sourmash matrix
+
+smash_dsn_k31_tree_mat <- dist2(smash_dsn_cmp_mat)
+smash_dsn_k31_tree_fit <- hclust(smash_dsn_k31_tree_mat)
+smash_dsn_k31_phylo <- as.phylo(smash_dsn_k31_tree_fit)
+
+```
+
+
+#### DSN ggtree
+```{r}
+# Make tree
+sm_dsn_k31_tree <- ggtree(smash_dsn_k31_phylo,
+                          color = "black",
+                          size = 0.4,
+                          layout = "fan",
+                          open.angle = 15)
+
+```
+
+### Cowplot NIF Group ggtrees
+##### DSP Isolates
+```{r, message=FALSE}
+# Add gheatmap 0 for genus
+## reproducible colors
+pgp0_notip_dsp <- gheatmap(sm_dsp_k31_tree, smash_dsp_cmp[, "Genus", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 3.5,
+                     font.size = 3,
+                     color = "grey50") + 
+  scale_fill_manual(values=c("#72A890",
+                             "#86D6E1",
+                             "#77E94F",
+                             "#E1ABAA",
+                             "#7BEFDF",
+                             "#DA47D2",
+                             "#CF7DDC"),
+                    name = "Genus",
+                    guide = guide_legend(
+                      direction = "vertical",
+                      ncol = 2,
+                      title.position = "top",
+                      title.theme = element_text(size = 18, hjust = 0.5),
+                      label.position = "right",
+                      label.theme = element_text(size = 14)
+                      )
+  ) +
+  theme(legend.title = element_text(), legend.key.size = unit(.5, "cm"))
+
+# Add gheatmap 1 for ACC
+pgp1_notip_dsp <- pgp0_notip_dsp + new_scale_fill()
+
+pgp2_notip_dsp <- gheatmap(pgp1_notip_dsp, smash_dsp_cmp[, "ACC", drop = F],
+                     offset = 0.2,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 3.5,
+                     font.size = 3,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option="viridis",
+                       direction = -1,
+                       name = "ACC (Relative Growth Rate)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 2 for BNF
+
+pgp3_notip_dsp <- pgp2_notip_dsp + new_scale_fill()
+
+pgp4_notip_dsp <- gheatmap(pgp3_notip_dsp, smash_dsp_cmp[, "BNF", drop=F],
+                 offset = 0.35,
+                 width=0.05,
+                 colnames_angle = 0,
+                 colnames_position = "top",
+                 colnames_offset_y = 3.5,
+                 font.size = 3,
+                 color = "grey50") + 
+  scale_fill_viridis_c(option="inferno",
+                       direction = -1,
+                       name = "BNF (15N/14N)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 3 for IAA
+pgp5_notip_dsp <- pgp4_notip_dsp + new_scale_fill()
+
+pgp6_notip_dsp <- gheatmap(pgp5_notip_dsp, smash_dsp_cmp[, "IAA", drop=F],
+                    offset = 0.5,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 3.5,
+                    font.size = 3,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "plasma",
+                       direction = 1,
+                       name = "IAA Biosynthesis (mg/mL)",
+                       limits = c(-5,215),
+                       breaks = c(0, 50, 100, 150, 200),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 4 for PO4
+pgp7_notip_dsp <- pgp6_notip_dsp + new_scale_fill()
+
+pgp_dsp_notip <- gheatmap(pgp7_notip_dsp, smash_dsp_cmp[, "PO4", drop=F],
+                    offset = 0.65,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 3.5,
+                    font.size = 3,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "magma",
+                       direction = 1,
+                       name = "PO4 Solubilization (mg/L)",
+                       limits = c(0, 2250),
+                       breaks = c(0, 500, 1000, 1500, 2000),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(),
+        legend.position = "bottom")
+
+pgp_dsp_rot <- print(rotate_tree(pgp_dsp_notip, -83))
+
+# save plot
+ggsave("./Plots/pgp_dsp_rot.pdf", pgp_dsp_rot, width = 22, height = 14)
+
+```
+
+##### SDS Isolates
+```{r, message=FALSE}
+# Add gheatmap 0 for genus
+## reproducible colors
+pgp0_notip_sds <- gheatmap(sm_sds_k31_tree, smash_sds_cmp[, "Genus", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 0.9,
+                     font.size = 3,
+                     color = "grey50") + 
+  scale_fill_manual(values=c("#E6BE53",
+                             "#CAD773",
+                             "#8F3EE4",
+                             "#D8E9D6",
+                             "#C59D6B",
+                             "#64E7A9",
+                             "#767CDE",
+                             "#E1ABAA",
+                             "#B4E3A7",
+                             "#CF7DDC"),
+                    name = "Genus",
+                    guide = guide_legend(
+                      direction = "vertical",
+                      ncol = 2,
+                      title.position = "top",
+                      title.theme = element_text(size = 18, hjust = 0.5),
+                      label.position = "right",
+                      label.theme = element_text(size = 14)
+                      )
+  ) +
+  theme(legend.title = element_text(), legend.key.size = unit(.5, "cm"))
+
+# Add gheatmap 1 for ACC
+pgp1_notip_sds <- pgp0_notip_sds + new_scale_fill()
+
+pgp2_notip_sds <- gheatmap(pgp1_notip_sds, smash_sds_cmp[, "ACC", drop = F],
+                     offset = 0.125,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 0.9,
+                     font.size = 3,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option="viridis",
+                       direction = -1,
+                       name = "ACC (Relative Growth Rate)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 2 for BNF
+
+pgp3_notip_sds <- pgp2_notip_sds + new_scale_fill()
+
+pgp4_notip_sds <- gheatmap(pgp3_notip_sds, smash_sds_cmp[, "BNF", drop=F],
+                 offset = 0.215,
+                 width=0.05,
+                 colnames_angle = 0,
+                 colnames_position = "top",
+                 colnames_offset_y = 0.9,
+                 font.size = 3,
+                 color = "grey50") + 
+  scale_fill_viridis_c(option="inferno",
+                       direction = -1,
+                       name = "BNF (15N/14N)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 3 for IAA
+pgp5_notip_sds <- pgp4_notip_sds + new_scale_fill()
+
+pgp6_notip_sds <- gheatmap(pgp5_notip_sds, smash_sds_cmp[, "IAA", drop=F],
+                    offset = 0.305,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 0.9,
+                    font.size = 3,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "plasma",
+                       direction = 1,
+                       name = "IAA Biosynthesis (mg/mL)",
+                       limits = c(-5,215),
+                       breaks = c(0, 50, 100, 150, 200),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 4 for PO4
+pgp7_notip_sds <- pgp6_notip_sds + new_scale_fill()
+
+pgp_sds_notip <- gheatmap(pgp7_notip_sds, smash_sds_cmp[, "PO4", drop=F],
+                    offset = 0.395,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 0.9,
+                    font.size = 3,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "magma",
+                       direction = 1,
+                       name = "PO4 Solubilization (mg/L)",
+                       limits = c(0,2250),
+                       breaks = c(0, 500, 1000, 1500, 2000),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(),
+        legend.position = "bottom")
+
+pgp_sds_rot <- print(rotate_tree(pgp_sds_notip, -85))
+
+# save plot
+ggsave("./Plots/pgp_sds_rot.pdf", pgp_sds_rot, width = 22, height = 14)
+
+```
+
+##### DSN Isolates
+```{r, message=FALSE}
+# Add gheatmap 0 for genus
+## reproducible colors
+pgp0_notip_dsn <- gheatmap(sm_dsn_k31_tree, smash_dsn_cmp[, "Genus", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 4.5,
+                     font.size = 2.85,
+                     color = "grey50") + 
+  scale_fill_manual(values=c("#CAD773",
+                             "#81D870",
+                             "#E25F9D",
+                             "#D8E9D6",
+                             "#72A890",
+                             "#CDEC4C",
+                             "#81748E",
+                             "#D3D0E3",
+                             "#7DAEDE",
+                             "#E2684F",
+                             "#E1ABAA",
+                             "#7BEFDF",
+                             "#D7A7DF",
+                             "#E5DEA8",
+                             "#CF7DDC"),
+                    name = "Genus",
+                    guide = guide_legend(
+                      direction = "vertical",
+                      ncol = 2,
+                      title.position = "top",
+                      title.theme = element_text(size = 18, hjust = 0.5),
+                      label.position = "right",
+                      label.theme = element_text(size = 14)
+                      )
+  ) +
+  theme(legend.title = element_text(), legend.key.size = unit(.5, "cm"))
+
+# Add gheatmap 1 for ACC
+pgp1_notip_dsn <- pgp0_notip_dsn + new_scale_fill()
+
+pgp2_notip_dsn <- gheatmap(pgp1_notip_dsn, smash_dsn_cmp[, "ACC", drop = F],
+                     offset = 0.22,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 4.5,
+                     font.size = 2.85,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option="viridis",
+                       direction = -1,
+                       name = "ACC (Relative Growth Rate)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 2 for BNF
+
+pgp3_notip_dsn <- pgp2_notip_dsn + new_scale_fill()
+
+pgp4_notip_dsn <- gheatmap(pgp3_notip_dsn, smash_dsn_cmp[, "BNF", drop=F],
+                 offset = 0.37,
+                 width=0.05,
+                 colnames_angle = 0,
+                 colnames_position = "top",
+                 colnames_offset_y = 4.5,
+                 font.size = 2.85,
+                 color = "grey50") + 
+  scale_fill_viridis_c(option="inferno",
+                       direction = -1,
+                       name = "BNF (15N/14N)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 3 for IAA
+pgp5_notip_dsn <- pgp4_notip_dsn + new_scale_fill()
+
+pgp6_notip_dsn <- gheatmap(pgp5_notip_dsn, smash_dsn_cmp[, "IAA", drop=F],
+                    offset = 0.52,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 4.5,
+                    font.size = 2.85,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "plasma",
+                       direction = 1,
+                       name = "IAA Biosynthesis (mg/mL)",
+                       limits = c(-5,215),
+                       breaks = c(0, 50, 100, 150, 200),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+# Add gheatmap 4 for PO4
+pgp7_notip_dsn <- pgp6_notip_dsn + new_scale_fill()
+
+pgp_dsn_notip <- gheatmap(pgp7_notip_dsn, smash_dsn_cmp[, "PO4", drop=F],
+                    offset = 0.67,
+                    width = 0.05,
+                    colnames_angle = 0,
+                    colnames_position = "top",
+                    colnames_offset_y = 4.5,
+                    font.size = 2.85,
+                    color = "grey50") + 
+  scale_fill_viridis_c(option = "magma",
+                       direction = 1,
+                       name = "PO4 Solubilization (mg/L)",
+                       limits = c(0, 2250),
+                       breaks = c(0, 500, 1000, 1500, 2000),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                       )) +
+  theme(legend.title = element_text(),
+        legend.position = "bottom")
+
+pgp_dsn_rot <- print(rotate_tree(pgp_dsn_notip, -83))
+
+# save plot
+ggsave("./Plots/pgp_dsn_rot.pdf", pgp_dsn_rot, width = 22, height = 14)
+
+```
+
+### Extract legends for pgp plots
+#### Genus
+```{r}
+# Genus Tree
+cowplot_genus <- gheatmap(sm_k31_tree_o15, pgp_master[, "Genus", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 9.5,
+                     font.size = 3.5,
+                     color = "grey50") + 
+  scale_fill_manual(values=c("#E6BE53",
+                             "#CAD773",
+                             "#81D870",
+                             "#8F3EE4",
+                             "#E25F9D",
+                             "#D8E9D6",
+                             "#72A890",
+                             "#CDEC4C",
+                             "#C59D6B",
+                             "#86D6E1",
+                             "#77E94F",
+                             "#81748E",
+                             "#64E7A9",
+                             "#D3D0E3",
+                             "#767CDE",
+                             "#7DAEDE",
+                             "#E2684F",
+                             "#E1ABAA",
+                             "#7BEFDF",
+                             "#DA47D2",
+                             "#D7A7DF",
+                             "#E5DEA8",
+                             "#B4E3A7",
+                             "#CF7DDC"),
+                    name = "Genus",
+                    guide = guide_legend(
+                      direction = "vertical",
+                      ncol = 3,
+                      title.position = "top",
+                      title.theme = element_text(size = 18, hjust = 0.5),
+                      label.position = "right",
+                      label.theme = element_text(size = 16)
+                      )) + theme(legend.title = element_text(),
+                                 legend.key.size = unit(0.75, "cm"))
+
+cowplot_genus
+
+legend_genus <- get_legend(cowplot_genus)
+```
+
+#### ACC
+```{r}
+cowplot_acc <- gheatmap(sm_dsp_k31_tree, pgp_master[, "ACC", drop = F],
+                     offset = 00,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 2.25,
+                     font.size = 3.5,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option="viridis",
+                       direction = -1,
+                       name = "ACC (Relative Growth Rate)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+cowplot_acc
+
+legend_acc <- get_legend(cowplot_acc)
+
+```
+
+#### BNF
+```{r}
+cowplot_bnf <- gheatmap(sm_dsp_k31_tree, pgp_master[, "BNF", drop = F],
+                     offset = 00,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 2.25,
+                     font.size = 3.5,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option="inferno",
+                       direction = -1,
+                       name = "BNF (15N/14N Ratio)",
+                       limits = c(0,5),
+                       breaks = c(0, 1, 2, 3, 4, 5),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+cowplot_bnf
+
+legend_bnf <- get_legend(cowplot_bnf)
+
+```
+
+#### IAA
+```{r}
+cowplot_iaa <- gheatmap(sm_dsp_k31_tree, pgp_master[, "IAA", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 2.25,
+                     font.size = 3.5,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option = "plasma",
+                       direction = 1,
+                       name = "IAA (mg/mL)",
+                       limits = c(-5, 215),
+                       breaks = c(0, 50, 100, 150, 200),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )
+                       ) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+cowplot_iaa
+
+legend_iaa <- get_legend(cowplot_iaa)
+
+```
+
+#### PO4
+```{r}
+cowplot_po4 <- gheatmap(sm_dsp_k31_tree, pgp_master[, "PO4", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 2.25,
+                     font.size = 3.5,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option = "magma",
+                       direction = 1,
+                       name = "PO4 (mg/L)",
+                       limits = c(0, 2250),
+                       breaks = c(0, 500, 1000, 1500, 2000),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )
+                       ) +
+  theme(legend.title = element_text(), legend.position = "bottom")
+
+cowplot_po4
+
+legend_po4 <- get_legend(cowplot_po4)
+
+```
+
+
+### Assay Legend Array
+```{r}
+
+pgp_legend_array_1 <- plot_grid(legend_acc,
+                              legend_bnf,
+                              nrow = 2)
+
+pgp_legend_array_2 <- plot_grid(legend_iaa,
+                                legend_po4,
+                                nrow = 2)
+
+pgp_legend_array <- plot_grid(pgp_legend_array_1,
+                              pgp_legend_array_2,
+                              ncol = 2)
+
+pgp_all_legend <- plot_grid(legend_genus,
+                            pgp_legend_array,
+                            nrow = 2)
+pgp_all_legend
+
+```
+
+#### Plot Grid
+
+
+```{r}
+pgp_row <- plot_grid(pgp_dsp_rot + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"),
+                                         legend.position = "none"),
+                     pgp_sds_rot + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"),
+                                         legend.position = "none"),
+                     pgp_dsn_rot + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"),
+                                         legend.position = "none"),
+                     pgp_all_legend,
+                     labels = c("A", "B", "C", ""),
+                     label_size = 24,
+                     nrow = 2,
+                     ncol = 2,
+                     vjust = 3,
+                     align = 'vh'
+                     )
+
+#pgp_grid <- plot_grid(pgp_row, pgp_all_legend,
+#                    ncol = 1,
+#                    rel_heights = c(1, 0.5))
+pgp_row
+
+ggsave("./plots/Fig1.pdf", pgp_row, width = 22, height = 14)
+```
+
+
+
+## Min and Max Phenotype values
+```{r}
+print("BNF")
+min(pgp_master[,"BNF"], na.rm = TRUE)
+max(pgp_master[,"BNF"], na.rm = TRUE)
+
+print("ACC")
+min(pgp_master[,"ACC"], na.rm = TRUE)
+max(pgp_master[,"ACC"], na.rm = TRUE)
+
+print("IAA")
+min(pgp_master[,"IAA"], na.rm = TRUE)
+max(pgp_master[,"IAA"], na.rm = TRUE)
+
+print("PO4")
+min(pgp_master[,"PO4"], na.rm = TRUE)
+max(pgp_master[,"PO4"], na.rm = TRUE)
+```
+
+
+## Data Summary
+
+### BNF Assay
+#### DSP Group
+```{r}
+# DSP Group
+## BNF < 1
+smash_dsp_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF < 1) %>%
+  count()
+
+## 1 <= BNF <= 2
+smash_dsp_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF >= 1 & BNF <=2) %>%
+  count()
+
+## BNF >= 2
+smash_dsp_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF >= 2) %>%
+  count()
+
+stable_dsp_bnf_rnk <-
+smash_dsp_cmp %>%
+  group_by(Genus, BNF) %>%
+  arrange(desc(BNF)) %>%
+  select("bcw_id", "Genus", "BNF") %>%
+  mutate(NIF_Group = "DSP")
+```
+
+#### SDS Group
+```{r}
+# SDS Group
+## BNF < 1
+smash_sds_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF < 1) %>%
+  count()
+
+## 1 <= BNF <= 2
+smash_sds_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF >= 1 & BNF <2) %>%
+  count()
+
+## BNF >= 2
+smash_sds_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF >= 2) %>%
+  count()
+
+stable_sds_bnf_rnk <-
+smash_sds_cmp %>%
+  group_by(Genus, BNF) %>%
+  arrange(desc(BNF)) %>%
+  select("bcw_id", "Genus", "BNF") %>%
+  mutate(NIF_Group = "SDS")
+```
+
+#### DSN Group
+```{r}
+# DSN Group
+## BNF < 1
+smash_dsn_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF < 1) %>%
+  count()
+
+## 1 <= BNF <= 2
+smash_dsn_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF >= 1 & BNF <2) %>%
+  count()
+
+## BNF >= 2
+smash_dsn_cmp %>%
+  group_by(Genus, BNF) %>%
+  select(BNF) %>%
+  filter(BNF >= 2) %>%
+  count()
+
+stable_dsn_bnf_rnk <-
+smash_dsn_cmp %>%
+  group_by(Genus, BNF) %>%
+  arrange(desc(BNF)) %>%
+  select("bcw_id", "Genus", "BNF") %>%
+  mutate(NIF_Group = "DSN")
+```
+
+### ACC Assay
+#### DSP Group
+```{r}
+# DSP Group
+## ACC < 1
+smash_dsp_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC < 1) %>%
+  count()
+
+## 1 <= ACC <= 2
+smash_dsp_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 1 & ACC <=2) %>%
+  count()
+
+## 2 <= ACC <= 3
+smash_dsp_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 2 & ACC <= 3) %>%
+  count()
+
+## 3 <= ACC <= 4
+smash_dsp_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 3 & ACC <= 4) %>%
+  count()
+
+## ACC < 4
+smash_dsp_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC > 4) %>%
+  count()
+
+## ACC RANKED
+colnames(smash_dsp_cmp[,194:200])
+
+stable_dsp_acc_rnk <-
+smash_dsp_cmp %>%
+  group_by(Genus, ACC) %>%
+  arrange(desc(ACC)) %>%
+  select("bcw_id", "Genus", "ACC") %>%
+  mutate(NIF_Group = "DSP")
+```
+
+#### SDS Group
+```{r}
+# SDS Group
+## ACC < 1
+smash_sds_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC < 1) %>%
+  count()
+
+## 1 <= ACC <= 2
+smash_sds_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 1 & ACC <=2) %>%
+  count()
+
+## 2 <= ACC <= 3
+smash_sds_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 2 & ACC <= 3) %>%
+  count()
+
+## 3 <= ACC <= 4
+smash_sds_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 3 & ACC <= 4) %>%
+  count()
+
+## ACC < 4
+smash_sds_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC > 4) %>%
+  count()
+
+## ACC RANKED
+colnames(smash_sds_cmp[,67:73])
+
+stable_sds_acc_rnk <-
+smash_sds_cmp %>%
+  group_by(Genus, ACC) %>%
+  arrange(desc(ACC)) %>%
+  select("bcw_id", "Genus", "ACC") %>%
+  mutate(NIF_Group = "SDS")
+```
+
+#### DSN Group
+```{r}
+# DSN Group
+## ACC < 1
+smash_dsn_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC < 1) %>%
+  count()
+
+## 1 <= ACC <= 2
+smash_dsn_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 1 & ACC <=2) %>%
+  count()
+
+## 2 <= ACC <= 3
+smash_dsn_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 2 & ACC <= 3) %>%
+  count()
+
+## 3 <= ACC <= 4
+smash_dsn_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC >= 3 & ACC <= 4) %>%
+  count()
+
+## ACC < 4
+smash_dsn_cmp %>%
+  group_by(Genus, ACC) %>%
+  select(ACC) %>%
+  filter(ACC > 4) %>%
+  count()
+
+## ACC RANKED
+colnames(smash_dsn_cmp[,234:240])
+
+stable_dsn_acc_rnk <-
+smash_dsn_cmp %>%
+  group_by(Genus, ACC) %>%
+  arrange(desc(ACC)) %>%
+  select("bcw_id", "Genus", "ACC") %>%
+  mutate(NIF_Group = "DSN")
+```
+
+
+### IAA Assay
+#### DSP Group
+```{r}
+# DSP Group
+## IAA < 1
+smash_dsp_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA < 1) %>%
+  count()
+
+## 1 <= IAA <= 2
+smash_dsp_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 1 & IAA <=2) %>%
+  count()
+
+## 2 <= IAA <= 3
+smash_dsp_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 2 & IAA <= 3) %>%
+  count()
+
+## 3 <= IAA <= 4
+smash_dsp_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 3 & IAA <= 4) %>%
+  count()
+
+## IAA < 4
+smash_dsp_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA > 4) %>%
+  count()
+
+## IAA RANKED
+colnames(smash_dsp_cmp[,194:200])
+
+stable_dsp_iaa_rnk <-
+smash_dsp_cmp %>%
+  group_by(Genus, IAA) %>%
+  arrange(desc(IAA)) %>%
+  select("bcw_id", "Genus", "IAA") %>%
+  mutate(NIF_Group = "DSP")
+```
+
+#### SDS Group
+```{r}
+# SDS Group
+## IAA < 1
+smash_sds_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA < 1) %>%
+  count()
+
+## 1 <= IAA <= 2
+smash_sds_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 1 & IAA <=2) %>%
+  count()
+
+## 2 <= IAA <= 3
+smash_sds_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 2 & IAA <= 3) %>%
+  count()
+
+## 3 <= IAA <= 4
+smash_sds_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 3 & IAA <= 4) %>%
+  count()
+
+## IAA < 4
+smash_sds_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA > 4) %>%
+  count()
+
+## IAA RANKED
+colnames(smash_sds_cmp[,67:73])
+
+stable_sds_iaa_rnk <- 
+smash_sds_cmp %>%
+  group_by(Genus, IAA) %>%
+  arrange(desc(IAA)) %>%
+  select("bcw_id", "Genus", "IAA") %>%
+  mutate(NIF_Group = "SDS")
+```
+
+#### DSN Group
+```{r}
+# DSN Group
+## IAA < 1
+smash_dsn_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA < 1) %>%
+  count()
+
+## 1 <= IAA <= 2
+smash_dsn_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 1 & IAA <=2) %>%
+  count()
+
+## 2 <= IAA <= 3
+smash_dsn_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 2 & IAA <= 3) %>%
+  count()
+
+## 3 <= IAA <= 4
+smash_dsn_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA >= 3 & IAA <= 4) %>%
+  count()
+
+## IAA < 4
+smash_dsn_cmp %>%
+  group_by(Genus, IAA) %>%
+  select(IAA) %>%
+  filter(IAA > 4) %>%
+  count()
+
+## IAA RANKED
+colnames(smash_dsn_cmp[,234:240])
+
+stable_dsn_iaa_rnk <-
+smash_dsn_cmp %>%
+  group_by(Genus, IAA) %>%
+  arrange(desc(IAA)) %>%
+  select("bcw_id", "Genus", "IAA") %>%
+  mutate(NIF_Group = "DSN")
+```
+
+### PO4 Assay
+#### DSP Group
+```{r}
+# DSP Group
+## PO4 < 1
+smash_dsp_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 < 1) %>%
+  count()
+
+## 1 <= PO4 <= 2
+smash_dsp_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 1 & PO4 <=2) %>%
+  count()
+
+## 2 <= PO4 <= 3
+smash_dsp_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 2 & PO4 <= 3) %>%
+  count()
+
+## 3 <= PO4 <= 4
+smash_dsp_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 3 & PO4 <= 4) %>%
+  count()
+
+## PO4 < 4
+smash_dsp_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 > 4) %>%
+  count()
+
+## PO4 RANKED
+colnames(smash_dsp_cmp[,194:200])
+
+stable_dsp_po4_rnk <-
+smash_dsp_cmp %>%
+  group_by(Genus, PO4) %>%
+  arrange(desc(PO4)) %>%
+  select("bcw_id", "Genus", "PO4") %>%
+  mutate(NIF_Group = "DSP")
+```
+
+#### SDS Group
+```{r}
+# SDS Group
+## PO4 < 1
+smash_sds_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 < 1) %>%
+  count()
+
+## 1 <= PO4 <= 2
+smash_sds_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 1 & PO4 <=2) %>%
+  count()
+
+## 2 <= PO4 <= 3
+smash_sds_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 2 & PO4 <= 3) %>%
+  count()
+
+## 3 <= PO4 <= 4
+smash_sds_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 3 & PO4 <= 4) %>%
+  count()
+
+## PO4 < 4
+smash_sds_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 > 4) %>%
+  count()
+
+## PO4 RANKED
+colnames(smash_sds_cmp[,67:73])
+
+stable_sds_po4_rnk <-
+smash_sds_cmp %>%
+  group_by(Genus, PO4) %>%
+  arrange(desc(PO4)) %>%
+  select("bcw_id", "Genus", "PO4") %>%
+  mutate(NIF_Group = "SDS")
+```
+
+#### DSN Group
+```{r}
+# DSN Group
+## PO4 < 1
+smash_dsn_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 < 1) %>%
+  count()
+
+## 1 <= PO4 <= 2
+smash_dsn_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 1 & PO4 <=2) %>%
+  count()
+
+## 2 <= PO4 <= 3
+smash_dsn_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 2 & PO4 <= 3) %>%
+  count()
+
+## 3 <= PO4 <= 4
+smash_dsn_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 >= 3 & PO4 <= 4) %>%
+  count()
+
+## PO4 < 4
+smash_dsn_cmp %>%
+  group_by(Genus, PO4) %>%
+  select(PO4) %>%
+  filter(PO4 > 4) %>%
+  count()
+
+## PO4 RANKED
+colnames(smash_dsn_cmp[,234:240])
+
+stable_dsn_po4_rnk <-
+smash_dsn_cmp %>%
+  group_by(Genus, PO4) %>%
+  arrange(desc(PO4)) %>%
+  select("bcw_id", "Genus", "PO4") %>%
+  mutate(NIF_Group = "DSN")
+```
+
+#### Save Sup. Tables
+```{r}
+# create list of dataframes
+sup_list <- mget(ls(pattern = "stable_.+"))
+
+sup_path_out <- "sup_tables/"
+
+for(i in names(sup_list)){
+  write.csv(sup_list[[i]], paste(sup_path_out, i,".csv"))
+}
 ```
