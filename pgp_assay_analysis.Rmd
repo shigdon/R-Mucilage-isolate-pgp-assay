@@ -23,6 +23,7 @@ library(viridis)
 library(randomcoloR)
 library(RColorBrewer)
 library(cowplot)
+library(ggrepel)
 ```
 
 # Read in Genome Metadata
@@ -1391,28 +1392,6 @@ pgp_row
 ggsave("./plots/Fig1.pdf", pgp_row, width = 22, height = 14)
 ```
 
-
-
-## Min and Max Phenotype values
-```{r}
-print("BNF")
-min(pgp_master[,"BNF"], na.rm = TRUE)
-max(pgp_master[,"BNF"], na.rm = TRUE)
-
-print("ACC")
-min(pgp_master[,"ACC"], na.rm = TRUE)
-max(pgp_master[,"ACC"], na.rm = TRUE)
-
-print("IAA")
-min(pgp_master[,"IAA"], na.rm = TRUE)
-max(pgp_master[,"IAA"], na.rm = TRUE)
-
-print("PO4")
-min(pgp_master[,"PO4"], na.rm = TRUE)
-max(pgp_master[,"PO4"], na.rm = TRUE)
-```
-
-
 ## Data Summary
 
 ### BNF Assay
@@ -1440,12 +1419,23 @@ smash_dsp_cmp %>%
   filter(BNF >= 2) %>%
   count()
 
+# BNF Ranked Summary Table for each isolate with genus info
 stable_dsp_bnf_rnk <-
 smash_dsp_cmp %>%
   group_by(Genus, BNF) %>%
   arrange(desc(BNF)) %>%
   select("bcw_id", "Genus", "BNF") %>%
-  mutate(NIF_Group = "DSP")
+  mutate(Group = "DSP")
+
+# Basic Stat Summary
+stat_dsp_BNF <- summarise(smash_dsp_cmp,
+                             Mean = mean(BNF, na.rm = TRUE),
+                             Median = median(BNF, na.rm = TRUE),
+                             Min = min(BNF, na.rm = TRUE),
+                             Max = max(BNF, na.rm = TRUE)) %>%
+  mutate(Units = "15N/14N") %>%
+  mutate(Group = "DSP") %>%
+  mutate(Assay = "BNF")
 ```
 
 #### SDS Group
@@ -1472,12 +1462,24 @@ smash_sds_cmp %>%
   filter(BNF >= 2) %>%
   count()
 
+# BNF Ranked Summary Table for each isolate with genus info
 stable_sds_bnf_rnk <-
 smash_sds_cmp %>%
   group_by(Genus, BNF) %>%
   arrange(desc(BNF)) %>%
   select("bcw_id", "Genus", "BNF") %>%
-  mutate(NIF_Group = "SDS")
+  mutate(Group = "SDS")
+
+# Basic Stat Summary
+stat_sds_BNF <- summarise(smash_sds_cmp,
+                             Mean = mean(BNF, na.rm = TRUE),
+                             Median = median(BNF, na.rm = TRUE),
+                             Min = min(BNF, na.rm = TRUE),
+                             Max = max(BNF, na.rm = TRUE)) %>%
+  mutate(Units = "15N/14N") %>%
+  mutate(Group = "SDS") %>%
+  mutate(Assay = "BNF")
+
 ```
 
 #### DSN Group
@@ -1504,12 +1506,23 @@ smash_dsn_cmp %>%
   filter(BNF >= 2) %>%
   count()
 
+# BNF Ranked Summary Table for each isolate with genus info
 stable_dsn_bnf_rnk <-
 smash_dsn_cmp %>%
   group_by(Genus, BNF) %>%
   arrange(desc(BNF)) %>%
   select("bcw_id", "Genus", "BNF") %>%
-  mutate(NIF_Group = "DSN")
+  mutate(Group = "DSN")
+
+# Basic Stat Summary
+stat_dsn_BNF <- summarise(smash_dsn_cmp,
+                             Mean = mean(BNF, na.rm = TRUE),
+                             Median = median(BNF, na.rm = TRUE),
+                             Min = min(BNF, na.rm = TRUE),
+                             Max = max(BNF, na.rm = TRUE)) %>%
+  mutate(Units = "15N/14N") %>%
+  mutate(Group = "DSN") %>%
+  mutate(Assay = "BNF")
 ```
 
 ### ACC Assay
@@ -1551,15 +1564,25 @@ smash_dsp_cmp %>%
   filter(ACC > 4) %>%
   count()
 
-## ACC RANKED
+## ACC Ranked Summary Table for each isolate with genus info
 colnames(smash_dsp_cmp[,194:200])
 
 stable_dsp_acc_rnk <-
 smash_dsp_cmp %>%
-  group_by(Genus, ACC) %>%
+  group_by(Genus) %>%
   arrange(desc(ACC)) %>%
   select("bcw_id", "Genus", "ACC") %>%
-  mutate(NIF_Group = "DSP")
+  mutate(Group = "DSP")
+
+# Basic Stat Summary
+stat_dsp_ACC <- summarise(smash_dsp_cmp,
+                             Mean = mean(ACC, na.rm = TRUE),
+                             Median = median(ACC, na.rm = TRUE),
+                             Min = min(ACC, na.rm = TRUE),
+                             Max = max(ACC, na.rm = TRUE)) %>%
+  mutate(Units = "RGR") %>%
+  mutate(Group = "DSP") %>%
+  mutate(Assay = "ACC")
 ```
 
 #### SDS Group
@@ -1600,15 +1623,25 @@ smash_sds_cmp %>%
   filter(ACC > 4) %>%
   count()
 
-## ACC RANKED
+## ACC Ranked Summary Table for each isolate with genus info
 colnames(smash_sds_cmp[,67:73])
 
 stable_sds_acc_rnk <-
 smash_sds_cmp %>%
-  group_by(Genus, ACC) %>%
+  group_by(Genus) %>%
   arrange(desc(ACC)) %>%
   select("bcw_id", "Genus", "ACC") %>%
-  mutate(NIF_Group = "SDS")
+  mutate(Group = "SDS")
+
+# Basic Stat Summary
+stat_sds_ACC <- summarise(smash_sds_cmp,
+                             Mean = mean(ACC, na.rm = TRUE),
+                             Median = median(ACC, na.rm = TRUE),
+                             Min = min(ACC, na.rm = TRUE),
+                             Max = max(ACC, na.rm = TRUE)) %>%
+  mutate(Units = "RGR") %>%
+  mutate(Group = "SDS") %>%
+  mutate(Assay = "ACC")
 ```
 
 #### DSN Group
@@ -1649,15 +1682,26 @@ smash_dsn_cmp %>%
   filter(ACC > 4) %>%
   count()
 
-## ACC RANKED
+## ACC Ranked Summary Table for each isolate with genus info
 colnames(smash_dsn_cmp[,234:240])
 
 stable_dsn_acc_rnk <-
 smash_dsn_cmp %>%
-  group_by(Genus, ACC) %>%
+  group_by(Genus) %>%
   arrange(desc(ACC)) %>%
   select("bcw_id", "Genus", "ACC") %>%
-  mutate(NIF_Group = "DSN")
+  mutate(Group = "DSN")
+
+# Basic Stat Summary
+stat_dsn_ACC <- summarise(smash_dsn_cmp,
+                             Mean = mean(ACC, na.rm = TRUE),
+                             Median = median(ACC, na.rm = TRUE),
+                             Min = min(ACC, na.rm = TRUE),
+                             Max = max(ACC, na.rm = TRUE)) %>%
+  mutate(Units = "RGR") %>%
+  mutate(Group = "DSN") %>%
+  mutate(Assay = "ACC")
+
 ```
 
 
@@ -1700,7 +1744,7 @@ smash_dsp_cmp %>%
   filter(IAA > 4) %>%
   count()
 
-## IAA RANKED
+## IAA Ranked Summary Table for each isolate with genus info
 colnames(smash_dsp_cmp[,194:200])
 
 stable_dsp_iaa_rnk <-
@@ -1708,7 +1752,17 @@ smash_dsp_cmp %>%
   group_by(Genus, IAA) %>%
   arrange(desc(IAA)) %>%
   select("bcw_id", "Genus", "IAA") %>%
-  mutate(NIF_Group = "DSP")
+  mutate(Group = "DSP")
+
+# Basic Stat Summary
+stat_dsp_IAA <- summarise(smash_dsp_cmp,
+                             Mean = mean(IAA, na.rm = TRUE),
+                             Median = median(IAA, na.rm = TRUE),
+                             Min = min(IAA, na.rm = TRUE),
+                             Max = max(IAA, na.rm = TRUE)) %>%
+  mutate(Units = "mg/mL") %>%
+  mutate(Group = "DSP") %>%
+  mutate(Assay = "IAA")
 ```
 
 #### SDS Group
@@ -1749,7 +1803,7 @@ smash_sds_cmp %>%
   filter(IAA > 4) %>%
   count()
 
-## IAA RANKED
+## IAA Ranked Summary Table for each isolate with genus info
 colnames(smash_sds_cmp[,67:73])
 
 stable_sds_iaa_rnk <- 
@@ -1757,7 +1811,17 @@ smash_sds_cmp %>%
   group_by(Genus, IAA) %>%
   arrange(desc(IAA)) %>%
   select("bcw_id", "Genus", "IAA") %>%
-  mutate(NIF_Group = "SDS")
+  mutate(Group = "SDS")
+
+# Basic Stat Summary
+stat_sds_IAA <- summarise(smash_sds_cmp,
+                             Mean = mean(IAA, na.rm = TRUE),
+                             Median = median(IAA, na.rm = TRUE),
+                             Min = min(IAA, na.rm = TRUE),
+                             Max = max(IAA, na.rm = TRUE)) %>%
+  mutate(Units = "mg/mL") %>%
+  mutate(Group = "SDS") %>%
+  mutate(Assay = "IAA")
 ```
 
 #### DSN Group
@@ -1798,7 +1862,7 @@ smash_dsn_cmp %>%
   filter(IAA > 4) %>%
   count()
 
-## IAA RANKED
+## IAA Ranked Summary Table for each isolate with genus info
 colnames(smash_dsn_cmp[,234:240])
 
 stable_dsn_iaa_rnk <-
@@ -1806,7 +1870,17 @@ smash_dsn_cmp %>%
   group_by(Genus, IAA) %>%
   arrange(desc(IAA)) %>%
   select("bcw_id", "Genus", "IAA") %>%
-  mutate(NIF_Group = "DSN")
+  mutate(Group = "DSN")
+
+# Basic Stat Summary
+stat_dsn_IAA <- summarise(smash_dsn_cmp,
+                             Mean = mean(IAA, na.rm = TRUE),
+                             Median = median(IAA, na.rm = TRUE),
+                             Min = min(IAA, na.rm = TRUE),
+                             Max = max(IAA, na.rm = TRUE)) %>%
+  mutate(Units = "mg/mL") %>%
+  mutate(Group = "DSN") %>%
+  mutate(Assay = "IAA")
 ```
 
 ### PO4 Assay
@@ -1848,7 +1922,7 @@ smash_dsp_cmp %>%
   filter(PO4 > 4) %>%
   count()
 
-## PO4 RANKED
+## PO4 Ranked Summary Table for each isolate with genus info
 colnames(smash_dsp_cmp[,194:200])
 
 stable_dsp_po4_rnk <-
@@ -1856,7 +1930,17 @@ smash_dsp_cmp %>%
   group_by(Genus, PO4) %>%
   arrange(desc(PO4)) %>%
   select("bcw_id", "Genus", "PO4") %>%
-  mutate(NIF_Group = "DSP")
+  mutate(Group = "DSP")
+
+# Basic Stat Summary
+stat_dsp_PO4 <- summarise(smash_dsp_cmp,
+                             Mean = mean(PO4, na.rm = TRUE),
+                             Median = median(PO4, na.rm = TRUE),
+                             Min = min(PO4, na.rm = TRUE),
+                             Max = max(PO4, na.rm = TRUE)) %>%
+  mutate(Units = "mg/L") %>%
+  mutate(Group = "DSP") %>%
+  mutate(Assay = "PO4")
 ```
 
 #### SDS Group
@@ -1897,7 +1981,7 @@ smash_sds_cmp %>%
   filter(PO4 > 4) %>%
   count()
 
-## PO4 RANKED
+## PO4 Ranked Summary Table for each isolate with genus info
 colnames(smash_sds_cmp[,67:73])
 
 stable_sds_po4_rnk <-
@@ -1905,7 +1989,17 @@ smash_sds_cmp %>%
   group_by(Genus, PO4) %>%
   arrange(desc(PO4)) %>%
   select("bcw_id", "Genus", "PO4") %>%
-  mutate(NIF_Group = "SDS")
+  mutate(Group = "SDS")
+
+# Basic Stat Summary
+stat_sds_PO4 <- summarise(smash_sds_cmp,
+                             Mean = mean(PO4, na.rm = TRUE),
+                             Median = median(PO4, na.rm = TRUE),
+                             Min = min(PO4, na.rm = TRUE),
+                             Max = max(PO4, na.rm = TRUE)) %>%
+  mutate(Units = "mg/L") %>%
+  mutate(Group = "SDS") %>%
+  mutate(Assay = "PO4")
 ```
 
 #### DSN Group
@@ -1946,7 +2040,7 @@ smash_dsn_cmp %>%
   filter(PO4 > 4) %>%
   count()
 
-## PO4 RANKED
+## PO4 Ranked Summary Table for each isolate with genus info
 colnames(smash_dsn_cmp[,234:240])
 
 stable_dsn_po4_rnk <-
@@ -1954,17 +2048,239 @@ smash_dsn_cmp %>%
   group_by(Genus, PO4) %>%
   arrange(desc(PO4)) %>%
   select("bcw_id", "Genus", "PO4") %>%
-  mutate(NIF_Group = "DSN")
+  mutate(Group = "DSN")
+
+# Basic Stat Summary
+stat_dsn_PO4 <- summarise(smash_dsn_cmp,
+                             Mean = mean(PO4, na.rm = TRUE),
+                             Median = median(PO4, na.rm = TRUE),
+                             Min = min(PO4, na.rm = TRUE),
+                             Max = max(PO4, na.rm = TRUE)) %>%
+  mutate(Units = "mg/L") %>%
+  mutate(Group = "DSN") %>%
+  mutate(Assay = "PO4")
 ```
 
-#### Save Sup. Tables
+#### Save Ranked Sup. Tables
 ```{r}
 # create list of dataframes
 sup_list <- mget(ls(pattern = "stable_.+"))
 
+# Define folder in path to save
 sup_path_out <- "sup_tables/"
 
+# write a csv file for each table in the list
 for(i in names(sup_list)){
   write.csv(sup_list[[i]], paste(sup_path_out, i,".csv"))
 }
+```
+
+#### S3 Table
+
+> Aggregate performance of isolates in all 3 groups on all assays to make one table
+
+```{r}
+# DSN leg
+s3_table_dsn <- stable_dsn_acc_rnk %>%
+  right_join(stable_dsn_bnf_rnk) %>%
+  right_join(stable_dsn_iaa_rnk) %>%
+  right_join(stable_dsn_po4_rnk) %>%
+  select(bcw_id, Genus, Group, ACC, BNF, IAA, PO4) %>%
+  mutate_if(is.numeric, round, digits = 2) %>%
+  arrange(Genus)
+
+# DSP leg
+s3_table_dsp <- stable_dsp_acc_rnk %>%
+  right_join(stable_dsp_bnf_rnk) %>%
+  right_join(stable_dsp_iaa_rnk) %>%
+  right_join(stable_dsp_po4_rnk) %>%
+  select(bcw_id, Genus, Group, ACC, BNF, IAA, PO4) %>%
+  mutate_if(is.numeric, round, digits = 2) %>%
+  arrange(Genus)
+
+# SDS leg
+s3_table_sds <- stable_sds_acc_rnk %>%
+  right_join(stable_sds_bnf_rnk) %>%
+  right_join(stable_sds_iaa_rnk) %>%
+  right_join(stable_sds_po4_rnk) %>%
+  select(bcw_id, Genus, Group, ACC, BNF, IAA, PO4) %>%
+  mutate_if(is.numeric, round, digits = 2) %>%
+  arrange(Genus)
+
+# Merge
+s3.table.list <- mget(ls(pattern = "s3_table_...")) # make list for row bind
+s3_table <- bind_rows(s3.table.list) # combine all 3
+s3_table <- replace(s3_table, is.na(s3_table), "No Data") # replace NA with "No Data"
+
+# save table to csv
+write_csv(s3_table, "./sup_tables/MS2-S3-Table.csv", col_names = TRUE)
+
+```
+
+
+#### S4 Table
+
+> Merge Basic Stat Summmary Tables
+
+```{r}
+# make list of data frames
+stat.list <- mget(ls(pattern = "stat_.+"))
+
+# Combine into one
+stat.all_assays <- bind_rows(stat.list)
+
+# group, reorder, arrange by Assay, round digits
+stat.all_assays <- stat.all_assays %>%
+  group_by(Assay, Group) %>%
+  select(Group, Assay, Units, Mean, Median, Min, Max) %>%
+  arrange(Assay) %>%
+  mutate_if(is.numeric, round, digits = 2)
+
+# Write to disk
+write_csv(stat.all_assays, "./sup_tables/MS2-S4-Table.csv", col_names = TRUE)
+```
+
+## Box Plots
+
+> Visualize the distribution of data for all assays subset by NIF group
+
+### Data Summary
+```{r}
+summary(s3_table2)
+```
+
+### Outlier function
+```{r}
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25) - 3 * IQR(x, na.rm = TRUE) | x > quantile(x, 0.75) + 3 * IQR(x, na.rm = TRUE))
+}
+```
+
+
+### Box Plots
+```{r}
+# Gather data
+s3_table3 <- s3_table2 %>%
+  gather("Assay", "Value", 4:7)
+```
+
+#### BNF Assay
+```{r}
+bp.bnf.data <- s3_table3 %>%
+  filter(Assay == "BNF")
+
+bp.bnf <- bp.bnf.data %>%
+  drop_na %>%
+  group_by(Group) %>%
+  mutate(outlier=ifelse(is_outlier(Value),bcw_id,as.numeric(NA))) %>%
+  ggplot(aes(Group, Value, fill=Group)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_text_repel(data=. %>% filter(!is.na(outlier)), aes(label=bcw_id)) +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  labs(x = "NIF Group", y = "BNF Ratio (15N/14N)") +
+  guides(fill=guide_legend(title="NIF Group")) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 12, face = "bold"),
+        axis.text.y = element_text(size = 12, face = "bold"),
+        legend.key.size = unit(1.5, "cm"),
+        legend.text = element_text(size = 12, face = "bold"),
+        legend.title = element_text(size = 14, face = "bold"))
+
+bp.bnf
+```
+
+#### ACC Assay
+```{r}
+bp.acc.data <- s3_table3 %>%
+  filter(Assay == "ACC")
+
+bp.acc <- bp.acc.data %>%
+  drop_na %>%
+  group_by(Group) %>%
+  mutate(outlier=ifelse(is_outlier(Value),bcw_id,as.numeric(NA))) %>%
+  ggplot(aes(Group, Value, fill=Group)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_text_repel(data=. %>% filter(!is.na(outlier)), aes(label=bcw_id)) +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  labs(x = "NIF Group", y = "ACC Concentration (mg/mL)") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 12, face = "bold"),
+        axis.text.y = element_text(size = 12, face = "bold"))
+
+bp.acc
+```
+
+
+#### IAA Assay
+```{r}
+
+bp.iaa.data <- s3_table3 %>%
+  filter(Assay == "IAA")
+
+
+bp.iaa <- bp.iaa.data %>%
+  drop_na %>%
+  group_by(Group) %>%
+  mutate(outlier=ifelse(is_outlier(Value),bcw_id,as.numeric(NA))) %>%
+  ggplot(aes(Group, Value, fill=Group)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_text_repel(data=. %>% filter(!is.na(outlier)), aes(label=bcw_id)) +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  labs(x = "NIF Group", y = "IAA Concentration (mg/mL)") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 12, face = "bold"),
+        axis.text.y = element_text(size = 12, face = "bold"))
+
+bp.iaa
+```
+
+#### PO4 Assay
+```{r}
+bp.po4.data <- s3_table3 %>%
+  filter(Assay == "PO4")
+
+bp.po4 <- bp.po4.data %>%
+  drop_na %>%
+  group_by(Group) %>%
+  mutate(outlier=ifelse(is_outlier(Value),bcw_id,as.character(NA))) %>%
+  ggplot(aes(Group, Value, fill=Group)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_text_repel(data=. %>% filter(!is.na(outlier)), aes(label=bcw_id)) +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  labs(x = "NIF Group", y = "PO4 Concentration (mg/mL)") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 12, face = "bold"),
+        axis.text.y = element_text(size = 12, face = "bold"))
+
+bp.po4
+
+```
+
+### Cowplot
+```{r}
+# extract legend
+bp.legend <- get_legend(bp.bnf)
+
+bp.plots <- plot_grid(bp.bnf + theme(legend.position = "none"),
+                     bp.acc + theme(legend.position = "none"),
+                     bp.iaa + theme(legend.position = "none"),
+                     bp.po4 + theme(legend.position = "none"),
+                     labels = c("A", "B", "C", "D"),
+                     label_size = 20,
+                     nrow = 2,
+                     ncol = 2,
+                     align = 'vh'
+                     )
+
+bp.grid <- plot_grid(bp.plots, bp.legend,
+                    ncol = 2,
+                    rel_widths = c(1, 0.2))
+bp.grid
+
+# save
+ggsave("./plots/MS2_S2-Fig.pdf", bp.grid, width = 16, height = 14)
 ```
