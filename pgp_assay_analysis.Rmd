@@ -46,6 +46,9 @@ metabat_bins <- read_csv("./genome_metadata/metabat_bin_count.csv", col_names = 
 # Sourmash LCA Genome Classification Data
 smash_lca_whole_genomes <- read.csv("./sourmash_data/sm-lca-whole_genomes-all-k31.csv", header = T)
 
+# Sourmash GTDB classifications
+smash_lca_gtdb <- read.csv("./sourmash_data/lca-classify-all-k31-gtdb89.csv", colClasses = "character")
+
 # Read in quast Summary for all isolate assemblies done with MEgahit
 asm_stats <- read_tsv("genome_metadata/assembly_stats/all_quast_reports.tsv") # includes eukaryotic isolates
 
@@ -96,18 +99,15 @@ single_isolates$phylum <- sub("^$", "unassigned", single_isolates$phylum)
 single_isolates <- single_isolates %>% filter(genus != "Meyerozyma" &
                                                 genus != "Rhodotorula")
 # remove isolates that were pulled apart
-single_isolates <- single_isolates %>% filter(bcw_id != "BCW_201831.1" &
-                                                bcw_id != "BCW_201831.2" &
-                                                bcw_id != "BCW_200557.1" &
-                                                bcw_id != "BCW_200557.2")
+single_isolates <- single_isolates %>% filter(bcw_id != "BCW-201831.1" &
+                                                bcw_id != "BCW-201831.2" &
+                                                bcw_id != "BCW-200557.1" &
+                                                bcw_id != "BCW-200557.2")
 # Keep only isolates with 1 genomic bin
 single_isolates <- single_isolates %>% filter(n_bins == 1)
 
 # add abb_ids
 single_isolates$abb_id <- abb_bcw_labels$ABB_ID[match(single_isolates$bcw_id, abb_bcw_labels$BCW_ID)]
-
-# change '_' to '-' for bcw_id
-single_isolates$bcw_id <- sub("_", "-", single_isolates$bcw_id)
 
 ```
 
@@ -243,8 +243,20 @@ abb_bcw_labels$BCW_ID <- sub("_", "-", abb_bcw_labels$BCW_ID)
 ## match BCW ids
 sm_k31_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(sm_k31_cmp), abb_bcw_labels$BCW_ID)]
 
-# add genus info to sm_k31
-sm_k31_cmp$genus <- single_isolates$genus[match(sm_k31_cmp$bcw_id, single_isolates$bcw_id)]
+# add GenBank genus info to sm_k31
+sm_k31_cmp$genus.gbk <- smash_lca_whole_genomes$genus[match(sm_k31_cmp$bcw_id,
+                                                            smash_lca_whole_genomes$bcw_id)]
+
+# add GTDB genus info to sm_k31
+sm_k31_cmp$genus.gtdb <- smash_lca_gtdb$genus[match(sm_k31_cmp$bcw_id,
+                                                    smash_lca_gtdb$ID)]
+
+# push Genbank genus assignments to unclassified genus assignments (fill in the blanks)
+genus_merge <- sm_k31_cmp %>% select("bcw_id", "genus.gbk", "genus.gtdb")
+genus_merge <- genus_merge %>% mutate(genus.gtdb = ifelse(genus.gtdb %in% "", genus.gbk, genus.gtdb))
+
+sm_k31_cmp$genus <- genus_merge$genus.gtdb[match(sm_k31_cmp$bcw_id,
+                                                 genus_merge$bcw_id)]
 
 # Create tx_name Variable with Hybrid genus + Isolate Name: GENUS sp. BCWXXXX
 sm_k31_cmp$tx_name <- paste(sm_k31_cmp$genus, sprintf("sp. %s", sm_k31_cmp$bcw_id))
@@ -298,7 +310,7 @@ pgp_master$`PO4` <- pgp_po4$PO4_mg_L_avg[match(pgp_master$BCW_ID, pgp_po4$BCW_ID
 pgp_master$`SID` <- pgp_sidero$Sidero_units_avg[match(pgp_master$BCW_ID, pgp_sidero$BCW_ID)]
 
 # add Genus classification for each isolate
-pgp_master$Genus <- smash_lca_whole_genomes$genus[match(pgp_master$BCW_ID, smash_lca_whole_genomes$bcw_id)]
+pgp_master$Genus <- sm_k31_cmp$genus[match(pgp_master$BCW_ID, sm_k31_cmp$bcw_id)]
 
 pgp_master$Genus <- as.factor(pgp_master$Genus) # coerce to factor
 
@@ -306,18 +318,8 @@ pgp_master$Genus <- as.factor(pgp_master$Genus) # coerce to factor
 set.seed(8888)
 pgp_genus_colors <- data.frame(Genus = unique(pgp_master$Genus), Color =  distinctColorPalette(length(unique(pgp_master$Genus))))
 
-# add phylum classification for each isolate
-pgp_master$Phylum <- single_isolates$phylum[match(pgp_master$BCW_ID, single_isolates$bcw_id)]
-
-## assign a unique color to each phylum
-set.seed(1234)
-pgp_phylum_colors <- data.frame(Phylum = unique(pgp_master$Phylum), Color =  distinctColorPalette(length(unique(pgp_master$Phylum))))
-
 ### match Genus
 pgp_master$Genus_Color <- pgp_genus_colors$Color[match(pgp_master$Genus, pgp_genus_colors$Genus)]
-
-### match Phylum
-pgp_master$Phylum_Color <- pgp_phylum_colors$Color[match(pgp_master$Phylum, pgp_phylum_colors$Phylum)]
 
 ## change number of significant digits for numeric values to 3
 pgp_master <- pgp_master %>% mutate_if(is.numeric, round, digits = 3)
@@ -358,7 +360,7 @@ rownames(pgp_master) <- sm_k31_phylo$tip.label
 
 head(rownames(pgp_master)) # inspect rownames
 
-colnames(pgp_master[,493:504]) # show column names
+colnames(pgp_master[,493:502]) # show column names
 
 levels(pgp_master$Genus) # assess levels of genera
 
@@ -378,30 +380,36 @@ pgp0_notip <- gheatmap(sm_k31_tree_o15, pgp_master[, "Genus", drop = F],
                      colnames_offset_y = 9.5,
                      font.size = 4,
                      color = "grey50") + 
-  scale_fill_manual(values=c("#E6BE53",
-                             "#CAD773",
-                             "#81D870",
-                             "#8F3EE4",
-                             "#E25F9D",
-                             "#D8E9D6",
-                             "#72A890",
-                             "#CDEC4C",
-                             "#C59D6B",
-                             "#86D6E1",
-                             "#77E94F",
-                             "#81748E",
-                             "#64E7A9",
-                             "#D3D0E3",
-                             "#767CDE",
-                             "#7DAEDE",
-                             "#E2684F",
-                             "#E1ABAA",
-                             "#7BEFDF",
-                             "#DA47D2",
-                             "#D7A7DF",
-                             "#E5DEA8",
-                             "#B4E3A7",
-                             "#CF7DDC"),
+  scale_fill_manual(values=c("#8EAFEB",
+                             "#9A61CE",
+                             "#8244E7",
+                             "#5DE58E",
+                             "#DE47DF",
+                             "#DFDC8F",
+                             "#79A560",
+                             "#DFE9D4",
+                             "#BDE9B4",
+                             "#E17FD9",
+                             "#9EEADA",
+                             "#6FE453",
+                             "#E1CFE2",
+                             "#5296B1",
+                             "#DA9EC3",
+                             "#919F85",
+                             "#906981",
+                             "#65E2BA",
+                             "#D9B99D",
+                             "#D6EC49",
+                             "#D8905B",
+                             "#DB459C",
+                             "#DC8790",
+                             "#6D79D1",
+                             "#A4C9DC",
+                             "#B0E477",
+                             "#E4C34F",
+                             "#5DD8E0",
+                             "#CFA3E9",
+                             "#E34D56"),
                     name = "Genus",
                     guide = guide_legend(
                       direction = "vertical",
@@ -545,7 +553,7 @@ rownames(smash_dsp_cmp) <- colnames(smash_dsp_cmp)
 smash_dsp_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(smash_dsp_cmp), abb_bcw_labels$BCW_ID)]
 
 # add genus info to smash_dsp_cmp
-smash_dsp_cmp$Genus <- smash_lca_whole_genomes$genus[match(smash_dsp_cmp$bcw_id, smash_lca_whole_genomes$bcw_id)]
+smash_dsp_cmp$Genus <- sm_k31_cmp$genus[match(smash_dsp_cmp$bcw_id, sm_k31_cmp$bcw_id)]
 
 # add tx_name Variable to smash_dsp_cmp
 smash_dsp_cmp$tx_name <- paste(smash_dsp_cmp$Genus, sprintf("sp. %s", smash_dsp_cmp$bcw_id))
@@ -607,7 +615,7 @@ rownames(smash_sds_cmp) <- colnames(smash_sds_cmp)
 smash_sds_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(smash_sds_cmp), abb_bcw_labels$BCW_ID)]
 
 # add genus info to smash_sds_cmp
-smash_sds_cmp$Genus <- single_isolates$genus[match(smash_sds_cmp$bcw_id, single_isolates$bcw_id)]
+smash_sds_cmp$Genus <- sm_k31_cmp$genus[match(smash_sds_cmp$bcw_id, sm_k31_cmp$bcw_id)]
 
 # add tx_name Variable to smash_sds_cmp
 smash_sds_cmp$tx_name <- paste(smash_sds_cmp$Genus, sprintf("sp. %s", smash_sds_cmp$bcw_id))
@@ -669,7 +677,7 @@ rownames(smash_dsn_cmp) <- colnames(smash_dsn_cmp)
 smash_dsn_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(smash_dsn_cmp), abb_bcw_labels$BCW_ID)]
 
 # add genus info to smash_dsn_cmp
-smash_dsn_cmp$Genus <- single_isolates$genus[match(smash_dsn_cmp$bcw_id, single_isolates$bcw_id)]
+smash_dsn_cmp$Genus <- sm_k31_cmp$genus[match(smash_dsn_cmp$bcw_id, sm_k31_cmp$bcw_id)]
 
 # add tx_name Variable to smash_dsn_cmp
 smash_dsn_cmp$tx_name <- paste(smash_dsn_cmp$Genus, sprintf("sp. %s", smash_dsn_cmp$bcw_id))
@@ -733,13 +741,14 @@ pgp0_notip_dsp <- gheatmap(sm_dsp_k31_tree, smash_dsp_cmp[, "Genus", drop = F],
                      colnames_offset_y = 3.5,
                      font.size = 3,
                      color = "grey50") + 
-  scale_fill_manual(values=c("#72A890",
-                             "#86D6E1",
-                             "#77E94F",
-                             "#E1ABAA",
-                             "#7BEFDF",
-                             "#DA47D2",
-                             "#CF7DDC"),
+  scale_fill_manual(values=c("#DFE9D4",
+                             "#E1CFE2",
+                             "#5296B1",
+                             "#65E2BA",
+                             "#DC8790",
+                             "#6D79D1",
+                             "#A4C9DC",
+                             "#E34D56"),
                     name = "Genus",
                     guide = guide_legend(
                       direction = "vertical",
@@ -877,16 +886,16 @@ pgp0_notip_sds <- gheatmap(sm_sds_k31_tree, smash_sds_cmp[, "Genus", drop = F],
                      colnames_offset_y = 0.9,
                      font.size = 3,
                      color = "grey50") + 
-  scale_fill_manual(values=c("#E6BE53",
-                             "#CAD773",
-                             "#8F3EE4",
-                             "#D8E9D6",
-                             "#C59D6B",
-                             "#64E7A9",
-                             "#767CDE",
-                             "#E1ABAA",
-                             "#B4E3A7",
-                             "#CF7DDC"),
+  scale_fill_manual(values=c("#8EAFEB",
+                             "#9A61CE",
+                             "#DE47DF",
+                             "#79A560",
+                             "#6FE453",
+                             "#919F85",
+                             "#D6EC49",
+                             "#DC8790",
+                             "#CFA3E9",
+                             "#E34D56"),
                     name = "Genus",
                     guide = guide_legend(
                       direction = "vertical",
@@ -1012,6 +1021,10 @@ ggsave("./Plots/pgp_sds_rot.pdf", pgp_sds_rot, width = 22, height = 14)
 
 ```
 
+```{r}
+sort(unique(smash_dsn_cmp$Genus))
+```
+
 ##### DSN Isolates
 ```{r, message=FALSE}
 # Add gheatmap 0 for genus
@@ -1024,21 +1037,27 @@ pgp0_notip_dsn <- gheatmap(sm_dsn_k31_tree, smash_dsn_cmp[, "Genus", drop = F],
                      colnames_offset_y = 4.5,
                      font.size = 2.85,
                      color = "grey50") + 
-  scale_fill_manual(values=c("#CAD773",
-                             "#81D870",
-                             "#E25F9D",
-                             "#D8E9D6",
-                             "#72A890",
-                             "#CDEC4C",
-                             "#81748E",
-                             "#D3D0E3",
-                             "#7DAEDE",
-                             "#E2684F",
-                             "#E1ABAA",
-                             "#7BEFDF",
-                             "#D7A7DF",
-                             "#E5DEA8",
-                             "#CF7DDC"),
+  scale_fill_manual(values=c("#9A61CE",
+                             "#8244E7",
+                             "#5DE58E",
+                             "#DFDC8F",
+                             "#79A560",
+                             "#DFE9D4",
+                             "#BDE9B4",
+                             "#E17FD9",
+                             "#9EEADA",
+                             "#DA9EC3",
+                             "#919F85",
+                             "#65E2BA",
+                             "#D9B99D",
+                             "#D8905B",
+                             "#DB459C",
+                             "#DC8790",
+                             "#6D79D1",
+                             "#B0E477",
+                             "#E4C34F",
+                             "#5DD8E0",
+                             "#E34D56"),
                     name = "Genus",
                     guide = guide_legend(
                       direction = "vertical",
@@ -1176,30 +1195,36 @@ cowplot_genus <- gheatmap(sm_k31_tree_o15, pgp_master[, "Genus", drop = F],
                      colnames_offset_y = 9.5,
                      font.size = 3.5,
                      color = "grey50") + 
-  scale_fill_manual(values=c("#E6BE53",
-                             "#CAD773",
-                             "#81D870",
-                             "#8F3EE4",
-                             "#E25F9D",
-                             "#D8E9D6",
-                             "#72A890",
-                             "#CDEC4C",
-                             "#C59D6B",
-                             "#86D6E1",
-                             "#77E94F",
-                             "#81748E",
-                             "#64E7A9",
-                             "#D3D0E3",
-                             "#767CDE",
-                             "#7DAEDE",
-                             "#E2684F",
-                             "#E1ABAA",
-                             "#7BEFDF",
-                             "#DA47D2",
-                             "#D7A7DF",
-                             "#E5DEA8",
-                             "#B4E3A7",
-                             "#CF7DDC"),
+  scale_fill_manual(values=c("#8EAFEB",
+                             "#9A61CE",
+                             "#8244E7",
+                             "#5DE58E",
+                             "#DE47DF",
+                             "#DFDC8F",
+                             "#79A560",
+                             "#DFE9D4",
+                             "#BDE9B4",
+                             "#E17FD9",
+                             "#9EEADA",
+                             "#6FE453",
+                             "#E1CFE2",
+                             "#5296B1",
+                             "#DA9EC3",
+                             "#919F85",
+                             "#906981",
+                             "#65E2BA",
+                             "#D9B99D",
+                             "#D6EC49",
+                             "#D8905B",
+                             "#DB459C",
+                             "#DC8790",
+                             "#6D79D1",
+                             "#A4C9DC",
+                             "#B0E477",
+                             "#E4C34F",
+                             "#5DD8E0",
+                             "#CFA3E9",
+                             "#E34D56"),
                     name = "Genus",
                     guide = guide_legend(
                       direction = "vertical",
@@ -2081,7 +2106,7 @@ for(i in names(sup_list)){
 
 ```{r}
 # DSN leg
-s3_table_dsn <- stable_dsn_acc_rnk %>%
+s2_table_dsn <- stable_dsn_acc_rnk %>%
   right_join(stable_dsn_bnf_rnk) %>%
   right_join(stable_dsn_iaa_rnk) %>%
   right_join(stable_dsn_po4_rnk) %>%
@@ -2090,7 +2115,7 @@ s3_table_dsn <- stable_dsn_acc_rnk %>%
   arrange(Genus)
 
 # DSP leg
-s3_table_dsp <- stable_dsp_acc_rnk %>%
+s2_table_dsp <- stable_dsp_acc_rnk %>%
   right_join(stable_dsp_bnf_rnk) %>%
   right_join(stable_dsp_iaa_rnk) %>%
   right_join(stable_dsp_po4_rnk) %>%
@@ -2099,7 +2124,7 @@ s3_table_dsp <- stable_dsp_acc_rnk %>%
   arrange(Genus)
 
 # SDS leg
-s3_table_sds <- stable_sds_acc_rnk %>%
+s2_table_sds <- stable_sds_acc_rnk %>%
   right_join(stable_sds_bnf_rnk) %>%
   right_join(stable_sds_iaa_rnk) %>%
   right_join(stable_sds_po4_rnk) %>%
@@ -2108,17 +2133,17 @@ s3_table_sds <- stable_sds_acc_rnk %>%
   arrange(Genus)
 
 # Merge
-s3.table.list <- mget(ls(pattern = "s3_table_...")) # make list for row bind
-s3_table <- bind_rows(s3.table.list) # combine all 3
-s3_table <- replace(s3_table, is.na(s3_table), "No Data") # replace NA with "No Data"
+s2.table.list <- mget(ls(pattern = "s2_table_...")) # make list for row bind
+s2_table <- bind_rows(s2.table.list) # combine all 3
+s2_table <- replace(s2_table, is.na(s2_table), "No Data") # replace NA with "No Data"
 
 # save table to csv
-write_csv(s3_table, "./sup_tables/MS2-S3-Table.csv", col_names = TRUE)
+write_csv(s2_table, "./sup_tables/MS2-S2-Table.csv", col_names = TRUE)
 
 ```
 
 
-#### S4 Table
+#### S3 Table
 
 > Merge Basic Stat Summmary Tables
 
@@ -2137,7 +2162,7 @@ stat.all_assays <- stat.all_assays %>%
   mutate_if(is.numeric, round, digits = 2)
 
 # Write to disk
-write_csv(stat.all_assays, "./sup_tables/MS2-S4-Table.csv", col_names = TRUE)
+write_csv(stat.all_assays, "./sup_tables/MS2-S3-Table.csv", col_names = TRUE)
 ```
 
 ## Box Plots
@@ -2146,7 +2171,7 @@ write_csv(stat.all_assays, "./sup_tables/MS2-S4-Table.csv", col_names = TRUE)
 
 ### Data Summary
 ```{r}
-summary(s3_table2)
+str(s3_table2)
 ```
 
 ### Outlier function
@@ -2162,6 +2187,8 @@ is_outlier <- function(x) {
 # Gather data
 s3_table3 <- s3_table2 %>%
   gather("Assay", "Value", 4:7)
+
+str(s3_table3)
 ```
 
 #### BNF Assay
@@ -2203,7 +2230,7 @@ bp.acc <- bp.acc.data %>%
   geom_boxplot(outlier.shape = NA) +
   geom_text_repel(data=. %>% filter(!is.na(outlier)), aes(label=bcw_id)) +
   geom_jitter(width = 0.2, alpha = 0.3) +
-  labs(x = "NIF Group", y = "ACC Concentration (mg/mL)") +
+  labs(x = "NIF Group", y = "ACC Utilization - Relative Growth Rate") +
   theme(axis.title.x = element_blank(),
         axis.title.y = element_text(size = 14, face = "bold"),
         axis.text.x = element_text(size = 12, face = "bold"),
